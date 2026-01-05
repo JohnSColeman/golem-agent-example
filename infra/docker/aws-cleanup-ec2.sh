@@ -25,8 +25,10 @@ NC='\033[0m' # No Color
 # Default values
 AWS_REGION="${AWS_REGION:-us-east-1}"
 INSTANCE_ID="golem-intest"
+INSTANCE_NAME="golem-intest"
 CLEANUP_ALL=false
 SECURITY_GROUP_NAME="golem-docker-sg"
+KEY_NAME=""
 IAM_ROLE_NAME="golem-ec2-ssm-role"
 INSTANCE_PROFILE_NAME="golem-ec2-ssm-profile"
 PARAMETER_STORE_PREFIX="/golem/docker"
@@ -42,6 +44,10 @@ while [[ $# -gt 0 ]]; do
       AWS_REGION="$2"
       shift 2
       ;;
+    --key-name)
+      KEY_NAME="$2"
+      shift 2
+      ;;
     --all)
       CLEANUP_ALL=true
       shift
@@ -53,11 +59,13 @@ while [[ $# -gt 0 ]]; do
       echo "  --instance-id       Specific instance ID to terminate"
       echo "  --all               Clean up all Golem Docker Compose instances"
       echo "  --region            AWS region (default: us-east-1)"
+      echo "  --key-name          SSH key pair name to delete (optional)"
       echo "  --help              Show this help message"
       echo ""
       echo "Examples:"
       echo "  $0 --instance-id i-1234567890abcdef0 --region us-east-1"
       echo "  $0 --all --region us-east-1"
+      echo "  $0 --instance-id i-1234567890abcdef0 --key-name golem-docker-compose-key --region us-east-1"
       exit 0
       ;;
     *)
@@ -113,16 +121,17 @@ check_prerequisites() {
 
 # Find all Golem instances
 find_golem_instances() {
-  log_info "Finding Golem Docker Compose instances..."
+  log_info "Finding Golem instances..."
   
+  # Search for instances with either tag name
   INSTANCES=$(aws ec2 describe-instances \
-    --filters "Name=tag:Name,Values=golem-docker-compose" "Name=instance-state-name,Values=running,stopped" \
+    --filters "Name=tag:Name,Values=golem-intest,golem-docker-compose" "Name=instance-state-name,Values=running,stopped" \
     --region "$AWS_REGION" \
     --query 'Reservations[*].Instances[*].[InstanceId,State.Name,PublicIpAddress,Tags[?Key==`Name`].Value|[0]]' \
     --output text)
   
   if [ -z "$INSTANCES" ]; then
-    log_warning "No Golem Docker Compose instances found"
+    log_warning "No Golem instances found"
     return 1
   fi
   
@@ -341,6 +350,41 @@ cleanup_security_group() {
   fi
 }
 
+# Clean up SSH key pair
+cleanup_key_pair() {
+  if [ -z "$KEY_NAME" ]; then
+    log_info "No SSH key pair specified for deletion"
+    return 0
+  fi
+  
+  log_info "Cleaning up SSH key pair..."
+  
+  # Check if key exists in AWS
+  if ! aws ec2 describe-key-pairs --key-names "$KEY_NAME" --region "$AWS_REGION" &> /dev/null; then
+    log_warning "SSH key pair '$KEY_NAME' not found in AWS"
+  else
+    # Delete key from AWS
+    if aws ec2 delete-key-pair --key-name "$KEY_NAME" --region "$AWS_REGION" 2>/dev/null; then
+      log_success "Deleted SSH key pair from AWS: $KEY_NAME"
+    else
+      log_warning "Could not delete SSH key pair from AWS"
+    fi
+  fi
+  
+  # Check if local key file exists and ask to delete
+  if [ -f ~/.ssh/${KEY_NAME}.pem ]; then
+    log_info "Local key file found: ~/.ssh/${KEY_NAME}.pem"
+    read -p "Delete local key file ~/.ssh/${KEY_NAME}.pem? (yes/no): " -r
+    echo
+    if [[ $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+      rm -f ~/.ssh/${KEY_NAME}.pem
+      log_success "Deleted local key file"
+    else
+      log_info "Kept local key file"
+    fi
+  fi
+}
+
 # Confirm cleanup
 confirm_cleanup() {
   local instances=$1
@@ -364,6 +408,9 @@ confirm_cleanup() {
   echo "  - IAM role: $IAM_ROLE_NAME"
   echo "  - IAM instance profile: $INSTANCE_PROFILE_NAME"
   echo "  - Parameter Store parameters: $PARAMETER_STORE_PREFIX/*"
+  if [ -n "$KEY_NAME" ]; then
+    echo "  - SSH key pair: $KEY_NAME (if exists)"
+  fi
   echo ""
   
   read -p "Are you sure you want to continue? (yes/no): " -r
@@ -389,7 +436,7 @@ main() {
     # Find and clean up all instances
     if find_golem_instances; then
       INSTANCE_LIST=$(aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=golem-docker-compose" "Name=instance-state-name,Values=running,stopped" \
+        --filters "Name=tag:Name,Values=golem-intest,golem-docker-compose" "Name=instance-state-name,Values=running,stopped" \
         --region "$AWS_REGION" \
         --query 'Reservations[*].Instances[*].InstanceId' \
         --output text)
@@ -409,9 +456,14 @@ main() {
   fi
   
   # Clean up AWS resources - continue even if individual steps fail
+  # Wait a bit for instances to fully terminate before cleaning up security group
   log_info ""
+  log_info "Waiting for instances to fully terminate before cleaning up dependent resources..."
+  sleep 5
+  
   log_info "Cleaning up AWS resources..."
   cleanup_security_group || log_warning "Failed to cleanup security group, continuing..."
+  cleanup_key_pair || log_warning "Failed to cleanup SSH key pair, continuing..."
   cleanup_parameters || log_warning "Failed to cleanup parameters, continuing..."
   cleanup_instance_profile || log_warning "Failed to cleanup instance profile, continuing..."
   cleanup_iam_role || log_warning "Failed to cleanup IAM role, continuing..."
@@ -424,6 +476,9 @@ main() {
   echo "Cleanup attempted for the following resources:"
   echo "  • EC2 instances"
   echo "  • Security group"
+  if [ -n "$KEY_NAME" ]; then
+    echo "  • SSH key pair"
+  fi
   echo "  • Parameter Store parameters"
   echo "  • IAM instance profile"
   echo "  • IAM role"

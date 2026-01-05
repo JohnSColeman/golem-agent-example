@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --key-name          AWS EC2 key pair name for SSH access"
       echo "                      (default: $DEFAULT_KEY_NAME, will be created if not exists)"
       echo "  --region            AWS region (default: us-east-1)"
-      echo "  --instance-type     EC2 instance type (default: t3.2xlarge)"
+      echo "  --instance-type     EC2 instance type (default: t3.small)"
       echo "  --help              Show this help message"
       exit 0
       ;;
@@ -122,9 +122,12 @@ check_prerequisites() {
 create_iam_role() {
   log_info "Creating IAM role for Parameter Store access..."
   
+  # Get AWS account ID for the policy
+  AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+  
   # Check if role already exists
   if aws iam get-role --role-name "$IAM_ROLE_NAME" &> /dev/null; then
-    log_info "IAM role '$IAM_ROLE_NAME' already exists"
+    log_info "IAM role '$IAM_ROLE_NAME' already exists, updating policies..."
   else
     # Create the trust policy document
     TRUST_POLICY='{
@@ -144,47 +147,62 @@ create_iam_role() {
       > /dev/null
     
     log_success "IAM role created: $IAM_ROLE_NAME"
-    
-    # Attach SSM policy for Parameter Store access
-    aws iam attach-role-policy \
-      --role-name "$IAM_ROLE_NAME" \
-      --policy-arn "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-    
-    # Get AWS account ID for the policy
-    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    
-    # Create inline policy for Parameter Store access
-    PARAMETER_POLICY='{
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Effect": "Allow",
-          "Action": [
-            "ssm:GetParameter",
-            "ssm:GetParameters",
-            "ssm:GetParametersByPath"
-          ],
-          "Resource": [
-            "arn:aws:ssm:'$AWS_REGION':'$AWS_ACCOUNT_ID':parameter'$PARAMETER_STORE_PREFIX'",
-            "arn:aws:ssm:'$AWS_REGION':'$AWS_ACCOUNT_ID':parameter'$PARAMETER_STORE_PREFIX'/*"
-          ]
-        },
-        {
-          "Effect": "Allow",
-          "Action": [
-            "ssm:DescribeParameters"
-          ],
-          "Resource": "*"
-        }
+  fi
+  
+  # Always attach/update policies (idempotent operations)
+  log_info "Ensuring IAM policies are attached..."
+  
+  # Attach SSM policy for Parameter Store access (idempotent)
+  aws iam attach-role-policy \
+    --role-name "$IAM_ROLE_NAME" \
+    --policy-arn "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" \
+    2>/dev/null || log_info "AmazonSSMManagedInstanceCore policy already attached"
+  
+  # Create inline policy for Parameter Store access with proper variable substitution
+  cat > /tmp/parameter-store-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath"
+      ],
+      "Resource": [
+        "arn:aws:ssm:${AWS_REGION}:${AWS_ACCOUNT_ID}:parameter${PARAMETER_STORE_PREFIX}",
+        "arn:aws:ssm:${AWS_REGION}:${AWS_ACCOUNT_ID}:parameter${PARAMETER_STORE_PREFIX}/*"
       ]
-    }'
-    
-    aws iam put-role-policy \
-      --role-name "$IAM_ROLE_NAME" \
-      --policy-name "GolemParameterStoreAccess" \
-      --policy-document "$PARAMETER_POLICY"
-    
-    log_success "IAM policies attached"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeParameters"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+  
+  aws iam put-role-policy \
+    --role-name "$IAM_ROLE_NAME" \
+    --policy-name "GolemParameterStoreAccess" \
+    --policy-document "file:///tmp/parameter-store-policy.json"
+  
+  log_success "IAM policies attached/updated"
+  
+  # Verify the policy was created successfully
+  log_info "Verifying policy attachment..."
+  if aws iam get-role-policy \
+    --role-name "$IAM_ROLE_NAME" \
+    --policy-name "GolemParameterStoreAccess" \
+    > /dev/null 2>&1; then
+    log_success "Policy verified successfully"
+  else
+    log_error "Failed to verify policy attachment"
+    exit 1
   fi
   
   # Check if instance profile exists
@@ -202,10 +220,12 @@ create_iam_role() {
       --role-name "$IAM_ROLE_NAME"
     
     log_success "Instance profile created: $INSTANCE_PROFILE_NAME"
-    
-    # Wait for instance profile to be ready
-    sleep 10
   fi
+  
+  # Wait for IAM changes to propagate (important for new policies or updates)
+  log_info "Waiting for IAM changes to propagate (15 seconds)..."
+  sleep 15
+  log_success "IAM role and policies ready"
 }
 
 # Generate a cryptographically secure random token
