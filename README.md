@@ -44,7 +44,7 @@ If you have been using a prior version of Golem it may have left incompatible ru
 remove this, execute this command to remove all the local state:
 
 ```shell
-rm -rf ~/Library/Application\ Support/golem/*`
+rm -rf ~/Library/Application\ Support/golem/*
 ```
 
 ## Testing the project code
