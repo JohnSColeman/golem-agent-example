@@ -24,10 +24,10 @@ rustup update
 ## Setup Golem - macOS
 
 If you plan to deploy to and test with Golem locally as required for this project, you will need to install the full
-Golem CLI. At this time version 1.4.0 is the latest release.
+Golem CLI. At this time version 1.4.2 is the latest release.
 
 ```shell
-curl -L https://github.com/golemcloud/golem/releases/download/v1.4.0/golem-aarch64-apple-darwin -o ~/.cargo/bin/golem && chmod +x ~/.cargo/bin/golem
+curl -L https://github.com/golemcloud/golem/releases/download/v1.4.2/golem-aarch64-apple-darwin -o ~/.cargo/bin/golem && chmod +x ~/.cargo/bin/golem
 ```
 
 This line is in required in .zshrc to execute the golem command:

@@ -10,21 +10,24 @@
     "start": "nohup golem server run > golem-server.log 2>&1 &",
     "stop": "pgrep -f \"golem server run\" | xargs kill -SIGTERM",
     "build": "golem build",
-    "deploy": "golem deploy"
+    "deploy": "golem deploy",
+    "deploy:intest": "golem deploy --environment intest"
   },
   "dependencies": {
     "@golemcloud/golem-ts-sdk": "0.0.74"
   },
   "devDependencies": {
+    "@golemcloud/golem-ts-typegen": "0.0.74",
     "@rollup/plugin-alias": "^5.1.1",
-    "@rollup/plugin-node-resolve": "^16.0.1",
-    "@rollup/plugin-typescript": "^12.1.4",
     "@rollup/plugin-commonjs": "^28.0.6",
     "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-typescript": "^12.1.4",
     "@types/node": "^24.3.1",
+    "ajv": "^8.17.1",
+    "js-yaml": "^4.1.1",
     "rollup": "^4.50.1",
     "tslib": "^2.8.1",
-    "typescript": "^5.9.2",
-    "@golemcloud/golem-ts-typegen": "0.0.74"
+    "typescript": "^5.9.2"
   }
 }

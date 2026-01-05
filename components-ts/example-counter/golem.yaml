@@ -27,6 +27,10 @@ httpApi:
     - domain: localhost:9006
       definitions:
       - counter-api
+    intest:
+    - domain: ec2-<host>.compute.amazonaws.com:9006
+      definitions:
+      - counter-api
 
 components:
   example:counter:
