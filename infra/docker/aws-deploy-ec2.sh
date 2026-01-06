@@ -4,7 +4,7 @@
 # Golem Docker Compose Deployment Script - EC2 Single Instance
 #
 # This script automates the deployment of Golem using Docker Compose on a 
-# single AWS EC2 instance (Option 1 from AWS_DOCKER_COMPOSE_DEPLOYMENT.md)
+# single AWS EC2 instance.
 #
 # Prerequisites:
 # - AWS CLI configured with credentials
