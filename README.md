@@ -41,7 +41,7 @@ To check you are setup try printing Golems version on the command line:
 
 ### Tip
 If you have been using a prior version of Golem it may have left incompatible runtime state, to
-remove this, execute this command to remove all the local state or better still use the --reset argument:
+remove this, execute this command to remove all the local state or better still use the golem deploy --reset argument:
 
 ```shell
 rm -rf ~/Library/Application\ Support/golem/*
