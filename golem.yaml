@@ -13,6 +13,11 @@ app: app
 environments:
   local:
     server: local
+  intest:
+    server:
+      url:  http://ec2-<host>.compute.amazonaws.com:9881
+      auth:
+        staticToken: <ADMIN_TOKEN>
   cloud:
     server: cloud
 components:
@@ -23,5 +28,9 @@ httpApi:
   deployments:
     local:
     - domain: app.localhost:9006
+      agents:
+        CounterAgent: {}
+    intest:
+    - domain: ec2-<host>.compute.amazonaws.com:9006
       agents:
         CounterAgent: {}

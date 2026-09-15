@@ -7,7 +7,8 @@
     "start-golem": "nohup golem server run > golem-server.log 2>&1 &",
     "stop-golem": "pgrep -f \"golem server run\" | xargs kill -SIGTERM",
     "build": "golem build",
-    "deploy": "golem deploy"
+    "deploy": "golem deploy",
+    "deploy:intest": "golem deploy --environment intest"
   },
   "devDependencies": {
     "@rollup/plugin-alias": "^5.1.1",
